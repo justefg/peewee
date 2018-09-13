@@ -2847,6 +2847,33 @@ def __pragma__(name):
         return self.pragma(name, value)
     return property(__get__, __set__)
 
+class OracleDatabase(Database):
+    def _connect(self, database, **kwargs):
+        if not cx_Oracle:
+            raise ImproperlyConfigured('cx_Oracle must be installed.')
+        from cx_Oracle import makedsn, connect
+        conn_kwargs = {
+            # 'charset': 'utf8',
+            # 'use_unicode': True,
+        }
+        conn_kwargs.update(kwargs)
+        host, port = conn_kwargs.pop('host'), conn_kwargs.pop('port')
+        conn_kwargs['dsn'] = makedsn(host, port, database)
+        return connect(**conn_kwargs)
+
+    def get_tables(self, schema=None):
+        return [row for row, in self.execute_sql('SELECT table_name FROM all_tables')]
+
+
+    def get_columns(self, table, schema=None):
+        sql = """
+            SELECT column_name, nullable, data_type
+            FROM all_tab_columns
+            WHERE table_name = :1"""
+        cursor = self.execute_sql(sql, (table,))
+        pks = set(self.get_primary_keys(table))
+        return [ColumnMetadata(name, dt, null == 'YES', name in pks, table)
+                for name, null, dt in cursor.fetchall()]
 
 class SqliteDatabase(Database):
     field_types = {
